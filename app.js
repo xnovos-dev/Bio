@@ -192,13 +192,17 @@ const DISCORD_USER_ID = (document.getElementById('discord-status')?.dataset.user
     [524288, 'Active Developer']
   ];
 
-  const statusEl = document.getElementById('discord-status');
-  const badgesEl = document.getElementById('discord-badges');
-  const presenceEl = document.getElementById('presence');
-  const panelEl = document.getElementById('presence-panel');
+  /* badges Discord shows on the profile but Lanyard does not report, in profile order */
+  const PROFILE_BADGES = [
+    { name: 'Games Played', src: 'assets/badges/games-played.svg' },
+    { name: 'Hours Played', src: 'assets/badges/hours-played.svg' },
+    { name: 'Hours Streamed', src: 'assets/badges/hours-streamed.svg' },
+    { name: 'Quests', src: 'assets/badges/quests.png' },
+    { name: 'Last Meadow', src: 'assets/badges/last-meadow.png' },
+    { name: 'Orbs Apprentice', src: 'assets/badges/orbs-apprentice.png' }
+  ];
 
-  let ticks = [];
-  let ticker = null;
+  const badgesEl = document.getElementById('discord-badges');
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -233,193 +237,278 @@ const DISCORD_USER_ID = (document.getElementById('discord-status')?.dataset.user
     return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${ext}?size=80`;
   }
 
-  function runTicks() {
-    ticks.forEach((fn) => fn());
+  /* activity art arrives in a few shapes: spotify keys, Discord's media
+     proxy, plain URLs, or an application asset hash */
+  function activityImage(activity, key) {
+    const asset = activity && activity.assets && activity.assets[key];
+    if (!asset) return '';
+    if (asset.startsWith('spotify:')) return `https://i.scdn.co/image/${asset.slice(8)}`;
+    if (asset.startsWith('mp:external/')) return `https://media.discordapp.net/external/${asset.slice(12)}`;
+    if (asset.startsWith('mp:')) return `https://media.discordapp.net/${asset.slice(3)}`;
+    if (/^https?:\/\//.test(asset)) return asset;
+    if (!activity.application_id) return '';
+    return `https://cdn.discordapp.com/app-assets/${activity.application_id}/${asset}.png`;
   }
 
-  function startTicks() {
-    if (ticker) return;
-    runTicks();
-    ticker = setInterval(runTicks, 1000);
-  }
+  /* every .presence block owns a chip and a card, so the header and the
+     floating dock can show the same live presence at the same time */
+  const presenceMounts = [...document.querySelectorAll('.presence')]
+    .map((mount) => {
+      const statusEl = mount.querySelector('.status');
+      const panelEl = mount.querySelector('.presence__panel');
+      if (!statusEl || !panelEl) return null;
 
-  function stopTicks() {
-    if (ticker) clearInterval(ticker);
-    ticker = null;
-  }
+      let ticks = [];
+      let ticker = null;
 
-  /* a song or a video runs between two times, so it gets a bar instead of a clock */
-  function addProgress(item, start, end) {
-    const bar = el('div', 'presence__bar');
-    const fill = el('span', 'presence__fill');
-    bar.append(fill);
+      function runTicks() {
+        ticks.forEach((fn) => fn());
+      }
 
-    const times = el('p', 'presence__times');
-    const elapsedEl = el('span');
-    const totalEl = el('span');
-    times.append(elapsedEl, totalEl);
-    item.append(bar, times);
+      function startTicks() {
+        if (ticker) return;
+        runTicks();
+        ticker = setInterval(runTicks, 1000);
+      }
 
-    ticks.push(() => {
-      const now = Date.now();
-      const total = Math.max(1, end - start);
-      const done = Math.min(total, Math.max(0, now - start));
-      fill.style.width = `${(done / total) * 100}%`;
-      elapsedEl.textContent = clock(done / 1000);
-      totalEl.textContent = clock(total / 1000);
-    });
-  }
+      function stopTicks() {
+        if (ticker) clearInterval(ticker);
+        ticker = null;
+      }
 
-  function buildPanel(data) {
-    if (!panelEl) return;
+      /* a song or a video runs between two times, so it gets a bar instead of a clock */
+      function addProgress(item, start, end) {
+        const bar = el('div', 'presence__bar');
+        const fill = el('span', 'presence__fill');
+        bar.append(fill);
 
-    ticks = [];
-    const user = data.discord_user || {};
-    const state = data.discord_status || 'offline';
+        const times = el('p', 'presence__times');
+        const elapsedEl = el('span');
+        const totalEl = el('span');
+        times.append(elapsedEl, totalEl);
+        item.append(bar, times);
 
-    const head = el('div', 'presence__head');
-    const portrait = avatarUrl(user);
-    if (portrait) {
-      const img = document.createElement('img');
-      img.className = 'presence__avatar';
-      img.src = portrait;
-      img.alt = '';
-      img.width = 42;
-      img.height = 42;
-      img.loading = 'lazy';
-      head.append(img);
-    }
+        ticks.push(() => {
+          const now = Date.now();
+          const total = Math.max(1, end - start);
+          const done = Math.min(total, Math.max(0, now - start));
+          fill.style.width = `${(done / total) * 100}%`;
+          elapsedEl.textContent = clock(done / 1000);
+          totalEl.textContent = clock(total / 1000);
+        });
+      }
 
-    const who = el('div', 'presence__id');
-    who.append(el('p', 'presence__name', user.global_name || user.username || 'Discord'));
-    const stateRow = el('p', 'presence__state');
-    stateRow.dataset.state = state;
-    stateRow.append(el('span', 'presence__dot'), document.createTextNode(STATUS_LABEL[state] || 'Discord'));
-    who.append(stateRow);
-    head.append(who);
+      /* a big game/app image with the small app icon laid over its corner */
+      function addThumb(row, large, small, alt) {
+        if (!large) return;
 
-    const list = el('ul', 'presence__list');
-    const spotify = data.listening_to_spotify && data.spotify ? data.spotify : null;
-
-    if (spotify && spotify.song) {
-      const item = el('li', 'presence__item presence__item--track');
-      const row = el('div', 'presence__track');
-
-      if (spotify.album_art_url) {
+        const thumb = el('div', 'presence__thumb');
         const art = document.createElement('img');
         art.className = 'presence__art';
-        art.src = spotify.album_art_url;
-        art.alt = spotify.album ? `${spotify.album} cover` : 'Album cover';
+        art.src = large;
+        art.alt = alt || '';
         art.width = 46;
         art.height = 46;
         art.loading = 'lazy';
         art.decoding = 'async';
-        row.append(art);
-      }
+        thumb.append(art);
 
-      const text = el('div', 'presence__track-text');
-      text.append(el('p', 'presence__kicker', 'Listening to Spotify'));
-      text.append(el('p', 'presence__title', spotify.song));
-      const meta = [spotify.artist, spotify.album].filter(Boolean).join(' \u00b7 ');
-      if (meta) text.append(el('p', 'presence__meta', meta));
-      row.append(text);
-      item.append(row);
-
-      const start = spotify.timestamps && spotify.timestamps.start;
-      const end = spotify.timestamps && spotify.timestamps.end;
-      if (start && end) addProgress(item, start, end);
-
-      list.append(item);
-    }
-
-    (data.activities || [])
-      .filter((a) => a.type in ACTIVITY_VERB && !(spotify && a.name === 'Spotify'))
-      .slice(0, 2)
-      .forEach((a) => {
-        /* music and video apps put the track in details and the artist in state,
-           so the track becomes the headline and the app moves into the meta line */
-        const media = (a.type === 2 || a.type === 3) && a.details;
-        const item = el('li', 'presence__item');
-        item.append(el('p', 'presence__kicker', media ? `${ACTIVITY_VERB[a.type]} ${a.name}` : ACTIVITY_VERB[a.type]));
-        item.append(el('p', 'presence__title', media ? a.details : a.name));
-
-        const metaParts = media ? [a.state] : [a.details, a.state];
-        const meta = metaParts.filter((part, i) => part && metaParts.indexOf(part) === i).join(' \u00b7 ');
-        if (meta) item.append(el('p', 'presence__meta', meta));
-
-        const start = a.timestamps && a.timestamps.start;
-        const end = a.timestamps && a.timestamps.end;
-        if (media && start && end) {
-          addProgress(item, start, end);
-        } else if (start) {
-          const timeEl = el('p', 'presence__times');
-          item.append(timeEl);
-          ticks.push(() => {
-            timeEl.textContent = `for ${spoken((Date.now() - start) / 1000)}`;
-          });
+        if (small) {
+          const icon = document.createElement('img');
+          icon.className = 'presence__art-small';
+          icon.src = small;
+          icon.alt = '';
+          icon.width = 18;
+          icon.height = 18;
+          icon.loading = 'lazy';
+          icon.decoding = 'async';
+          thumb.append(icon);
         }
 
-        list.append(item);
+        row.prepend(thumb);
+      }
+
+      function build(data) {
+        ticks = [];
+        const user = data.discord_user || {};
+        const state = data.discord_status || 'offline';
+
+        const head = el('div', 'presence__head');
+        const portrait = avatarUrl(user);
+        if (portrait) {
+          const img = document.createElement('img');
+          img.className = 'presence__avatar';
+          img.src = portrait;
+          img.alt = '';
+          img.width = 42;
+          img.height = 42;
+          img.loading = 'lazy';
+          head.append(img);
+        }
+
+        const who = el('div', 'presence__id');
+        who.append(el('p', 'presence__name', user.global_name || user.username || 'Discord'));
+        const stateRow = el('p', 'presence__state');
+        stateRow.dataset.state = state;
+        stateRow.append(el('span', 'presence__dot'), document.createTextNode(STATUS_LABEL[state] || 'Discord'));
+        who.append(stateRow);
+        head.append(who);
+
+        const profileRow = el('ul', 'presence__head-badges');
+        profileRow.setAttribute('aria-label', 'Profile badges');
+        PROFILE_BADGES.forEach((badge) => {
+          const cell = el('li', 'presence__head-badge');
+          const img = document.createElement('img');
+          img.src = badge.src;
+          img.alt = badge.name;
+          img.title = badge.name;
+          img.width = 18;
+          img.height = 18;
+          img.loading = 'lazy';
+          img.decoding = 'async';
+          cell.append(img);
+          profileRow.append(cell);
+        });
+        head.append(profileRow);
+
+        const list = el('ul', 'presence__list');
+        const spotify = data.listening_to_spotify && data.spotify ? data.spotify : null;
+
+        if (spotify && spotify.song) {
+          const item = el('li', 'presence__item presence__item--track');
+          const row = el('div', 'presence__track');
+
+          addThumb(
+            row,
+            spotify.album_art_url,
+            '',
+            spotify.album ? `${spotify.album} cover` : 'Album cover'
+          );
+
+          const text = el('div', 'presence__track-text');
+          text.append(el('p', 'presence__kicker', 'Listening to Spotify'));
+          text.append(el('p', 'presence__title', spotify.song));
+          const meta = [spotify.artist, spotify.album].filter(Boolean).join(' \u00b7 ');
+          if (meta) text.append(el('p', 'presence__meta', meta));
+          row.append(text);
+          item.append(row);
+
+          const start = spotify.timestamps && spotify.timestamps.start;
+          const end = spotify.timestamps && spotify.timestamps.end;
+          if (start && end) addProgress(item, start, end);
+
+          list.append(item);
+        }
+
+        (data.activities || [])
+          .filter((a) => a.type in ACTIVITY_VERB && !(spotify && a.name === 'Spotify'))
+          .slice(0, 2)
+          .forEach((a) => {
+            /* music and video apps put the track in details and the artist in state,
+               so the track becomes the headline and the app moves into the meta line */
+            const media = (a.type === 2 || a.type === 3) && a.details;
+            const item = el('li', 'presence__item presence__item--track');
+            const row = el('div', 'presence__track');
+
+            addThumb(
+              row,
+              activityImage(a, 'large_image'),
+              activityImage(a, 'small_image'),
+              (a.assets && a.assets.large_text) || a.name
+            );
+
+            const text = el('div', 'presence__track-text');
+            text.append(el('p', 'presence__kicker', media ? `${ACTIVITY_VERB[a.type]} ${a.name}` : ACTIVITY_VERB[a.type]));
+            text.append(el('p', 'presence__title', media ? a.details : a.name));
+
+            const metaParts = media ? [a.state] : [a.details, a.state];
+            const meta = metaParts.filter((part, i) => part && metaParts.indexOf(part) === i).join(' \u00b7 ');
+            if (meta) text.append(el('p', 'presence__meta', meta));
+            row.append(text);
+            item.append(row);
+
+            const start = a.timestamps && a.timestamps.start;
+            const end = a.timestamps && a.timestamps.end;
+            if (media && start && end) {
+              addProgress(item, start, end);
+            } else if (start) {
+              const timeEl = el('p', 'presence__times');
+              item.append(timeEl);
+              ticks.push(() => {
+                timeEl.textContent = `for ${spoken((Date.now() - start) / 1000)}`;
+              });
+            }
+
+            list.append(item);
+          });
+
+        if (!list.children.length) {
+          list.append(el('li', 'presence__empty', 'Nothing open right now'));
+        }
+
+        panelEl.replaceChildren(head, list);
+        panelEl.hidden = false;
+
+        if (ticker) runTicks();
+      }
+
+      function paintChip(data) {
+        const state = data.discord_status || 'offline';
+        statusEl.dataset.state = state;
+
+        const label = statusEl.querySelector('.status__label');
+        if (label) label.textContent = STATUS_LABEL[state] || 'Discord';
+
+        const activityEl = statusEl.querySelector('.status__activity');
+        const spotify = data.listening_to_spotify && data.spotify ? data.spotify : null;
+        const activity = (data.activities || []).find(
+          (a) => a.type in ACTIVITY_VERB && a.name !== 'Spotify'
+        );
+
+        if (activityEl) {
+          if (spotify && spotify.song) {
+            activityEl.textContent = `Listening to ${spotify.song}`;
+          } else if (activity) {
+            activityEl.textContent = `${ACTIVITY_VERB[activity.type]} ${activity.name}`;
+          } else {
+            activityEl.textContent = '';
+          }
+        }
+
+        statusEl.classList.remove('is-hidden');
+        build(data);
+      }
+
+      /* keeps the card on screen when the window is narrower than chip + card */
+      function place() {
+        if (panelEl.hidden) return;
+        panelEl.style.left = '';
+        const rect = panelEl.getBoundingClientRect();
+        const gutter = 12;
+        const overflow = rect.right - (document.documentElement.clientWidth - gutter);
+        if (overflow > 0) {
+          panelEl.style.left = `${-Math.max(overflow, rect.left - gutter)}px`;
+        }
+      }
+
+      mount.addEventListener('mouseenter', () => {
+        place();
+        startTicks();
       });
+      mount.addEventListener('mouseleave', stopTicks);
+      mount.addEventListener('focusin', () => {
+        place();
+        startTicks();
+      });
+      mount.addEventListener('focusout', stopTicks);
+      window.addEventListener('resize', place);
 
-    if (!list.children.length) {
-      list.append(el('li', 'presence__empty', 'Nothing open right now'));
-    }
-
-    panelEl.replaceChildren(head, list);
-    panelEl.hidden = false;
-
-    if (ticker) runTicks();
-  }
-
-  /* keeps the card on screen when the window is narrower than chip + card */
-  function placePanel() {
-    if (!panelEl || panelEl.hidden) return;
-    panelEl.style.left = '';
-    const rect = panelEl.getBoundingClientRect();
-    const gutter = 12;
-    const overflow = rect.right - (document.documentElement.clientWidth - gutter);
-    if (overflow > 0) {
-      panelEl.style.left = `${-Math.max(overflow, rect.left - gutter)}px`;
-    }
-  }
-
-  if (presenceEl) {
-    presenceEl.addEventListener('mouseenter', () => {
-      placePanel();
-      startTicks();
-    });
-    presenceEl.addEventListener('mouseleave', stopTicks);
-    presenceEl.addEventListener('focusin', () => {
-      placePanel();
-      startTicks();
-    });
-    presenceEl.addEventListener('focusout', stopTicks);
-    window.addEventListener('resize', placePanel);
-  }
+      return { paint: paintChip };
+    })
+    .filter(Boolean);
 
   function paint(data) {
-    if (!statusEl) return;
-
-    const state = data.discord_status || 'offline';
-    statusEl.dataset.state = state;
-    statusEl.querySelector('.status__label').textContent = STATUS_LABEL[state] || 'Discord';
-
-    const activityEl = statusEl.querySelector('.status__activity');
-    const spotify = data.listening_to_spotify && data.spotify ? data.spotify : null;
-    const activity = (data.activities || []).find(
-      (a) => a.type in ACTIVITY_VERB && a.name !== 'Spotify'
-    );
-    if (spotify && spotify.song) {
-      activityEl.textContent = `Listening to ${spotify.song}`;
-    } else if (activity) {
-      activityEl.textContent = `${ACTIVITY_VERB[activity.type]} ${activity.name}`;
-    }
-
-    statusEl.href = `https://discord.com/users/${DISCORD_USER_ID}`;
-    statusEl.target = '_blank';
-    statusEl.rel = 'noopener noreferrer';
-    statusEl.classList.remove('is-hidden');
+    presenceMounts.forEach((mount) => mount.paint(data));
 
     const flags = (data.discord_user && data.discord_user.public_flags) || 0;
     const owned = FLAGS.filter(([bit]) => (flags & bit) === bit).map(([, name]) => name);
@@ -433,8 +522,6 @@ const DISCORD_USER_ID = (document.getElementById('discord-status')?.dataset.user
       }));
       badgesEl.hidden = false;
     }
-
-    buildPanel(data);
   }
 
   /* ---------- live presence over Lanyard's socket ---------- */

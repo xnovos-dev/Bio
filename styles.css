@@ -829,8 +829,8 @@ body.has-pointer .hero-grid { opacity: 1; }
 /* ---------- closing scene ---------- */
 
 .close {
-  margin-top: clamp(32px, 5vw, 64px);
-  padding-top: clamp(30px, 4vw, 46px);
+  margin-top: clamp(24px, 3.5vw, 44px);
+  padding-top: clamp(22px, 2.8vw, 34px);
   overflow: hidden;
   border-radius: var(--r-3) var(--r-3) 0 0;
   background: var(--invert-bg);
@@ -848,7 +848,7 @@ body.has-pointer .hero-grid { opacity: 1; }
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: clamp(34px, 6vw, 72px);
+  margin-bottom: clamp(22px, 3vw, 38px);
 }
 
 .clink {
@@ -901,10 +901,10 @@ body.has-pointer .hero-grid { opacity: 1; }
 .close__name {
   margin: 0;
   font-family: var(--display);
-  font-size: min(29vw, 34rem);
+  font-size: clamp(3.25rem, 8vw, 6.5rem);
   font-weight: 600;
-  line-height: 0.8;
-  letter-spacing: -0.05em;
+  line-height: 0.9;
+  letter-spacing: -0.04em;
   white-space: nowrap;
   background-image: linear-gradient(104deg,
     var(--invert-ink) 0 40%,
@@ -943,8 +943,8 @@ body.has-pointer .hero-grid { opacity: 1; }
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-top: clamp(18px, 3vw, 30px);
-  padding-block: clamp(18px, 2.6vw, 28px);
+  margin-top: clamp(14px, 2vw, 22px);
+  padding-block: clamp(14px, 1.8vw, 22px);
   border-top: 1px solid color-mix(in srgb, var(--invert-ink) 18%, transparent);
 }
 
@@ -1104,6 +1104,7 @@ body::after {
   display: inline-flex;
   align-items: center;
   gap: 9px;
+  cursor: default;
   height: 38px;
   padding: 0 15px;
   border-radius: var(--full);
@@ -1194,6 +1195,11 @@ body::after {
   display: inline-flex;
   align-items: center;
   min-width: 0;
+}
+
+/* the same chip rides inside the floating dock */
+.presence--dock {
+  margin-right: 4px;
 }
 
 /* invisible bridge so crossing the gap does not close the panel */
@@ -1329,12 +1335,30 @@ body::after {
   min-width: 0;
 }
 
-.presence__art {
+.presence__thumb {
+  position: relative;
   flex: 0 0 auto;
+}
+
+.presence__art {
+  display: block;
   width: 46px;
   height: 46px;
   border-radius: 6px;
   background: var(--surface);
+  object-fit: cover;
+}
+
+/* the small app icon Discord lays over the corner of the big image */
+.presence__art-small {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--raise);
+  box-shadow: 0 0 0 2px var(--raise);
   object-fit: cover;
 }
 
@@ -1397,6 +1421,29 @@ body::after {
   margin: 0;
   color: var(--muted);
   font-size: 0.875rem;
+}
+
+/* profile badges sit beside the name, keeping their own colour */
+.presence__head-badges {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+.presence__head-badge {
+  display: grid;
+  place-items: center;
+}
+
+.presence__head-badge img {
+  display: block;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
 }
 
 @media (hover: none) {
@@ -1486,6 +1533,9 @@ html.js .panels[data-reveal] { transition-delay: 0.12s; }
 
   .stage { --u: 0.78px; }
   .hero__line { max-width: 32em; }
+
+  /* keep the floating bar from outgrowing a narrow window */
+  .presence--dock .status__activity { display: none; }
 }
 
 @media (max-width: 720px) {
@@ -1498,6 +1548,18 @@ html.js .panels[data-reveal] { transition-delay: 0.12s; }
   }
 
   .dock.is-on { transform: translate(-50%, 0); }
+
+  /* the bar sits at the bottom here, so its card has to open upward */
+  .presence--dock .presence__panel {
+    top: auto;
+    bottom: calc(100% + 12px);
+    transform: none;
+  }
+
+  .presence--dock::after {
+    top: auto;
+    bottom: 100%;
+  }
 
   .dock__link {
     width: 46px;
