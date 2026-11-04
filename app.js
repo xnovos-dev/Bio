@@ -1,9 +1,11 @@
 /* ---------------------------------------------------------------
    Xerous: page behaviour.
    The Discord chip reads its ID from data-user-id on #discord-status.
-   Presence only appears once that account has joined the Lanyard
-   server (https://discord.gg/lanyard); until then the chip stays
-   hidden rather than showing a broken state.
+   Presence comes over Lanyard's WebSocket, so status and the current
+   song change live without a refresh; a REST poll takes over if the
+   socket cannot be opened. Presence only appears once that account
+   has joined the Lanyard server (https://discord.gg/lanyard); until
+   then the chip stays hidden rather than showing a broken state.
    Everything else here is optional polish: the page reads fine
    with this file removed.
    --------------------------------------------------------------- */
@@ -300,11 +302,28 @@ const DISCORD_USER_ID = (document.getElementById('discord-status')?.dataset.user
     const spotify = data.listening_to_spotify && data.spotify ? data.spotify : null;
 
     if (spotify && spotify.song) {
-      const item = el('li', 'presence__item');
-      item.append(el('p', 'presence__kicker', 'Listening to Spotify'));
-      item.append(el('p', 'presence__title', spotify.song));
+      const item = el('li', 'presence__item presence__item--track');
+      const row = el('div', 'presence__track');
+
+      if (spotify.album_art_url) {
+        const art = document.createElement('img');
+        art.className = 'presence__art';
+        art.src = spotify.album_art_url;
+        art.alt = spotify.album ? `${spotify.album} cover` : 'Album cover';
+        art.width = 46;
+        art.height = 46;
+        art.loading = 'lazy';
+        art.decoding = 'async';
+        row.append(art);
+      }
+
+      const text = el('div', 'presence__track-text');
+      text.append(el('p', 'presence__kicker', 'Listening to Spotify'));
+      text.append(el('p', 'presence__title', spotify.song));
       const meta = [spotify.artist, spotify.album].filter(Boolean).join(' \u00b7 ');
-      if (meta) item.append(el('p', 'presence__meta', meta));
+      if (meta) text.append(el('p', 'presence__meta', meta));
+      row.append(text);
+      item.append(row);
 
       const start = spotify.timestamps && spotify.timestamps.start;
       const end = spotify.timestamps && spotify.timestamps.end;
@@ -418,23 +437,161 @@ const DISCORD_USER_ID = (document.getElementById('discord-status')?.dataset.user
     buildPanel(data);
   }
 
-  async function loadPresence() {
-    if (!DISCORD_USER_ID) return;
+  /* ---------- live presence over Lanyard's socket ---------- */
+
+  const LANYARD_SOCKET = 'wss://api.lanyard.rest/socket';
+  const LANYARD_API = 'https://api.lanyard.rest/v1/users/';
+
+  let socket = null;
+  let beat = null;
+  let hello = null;
+  let retryTimer = null;
+  let pollTimer = null;
+  let failures = 0;
+  let live = false;
+
+  async function fetchPresence() {
     try {
-      const response = await fetch(
-        `https://api.lanyard.rest/v1/users/${DISCORD_USER_ID}`,
-        { cache: 'no-store' }
-      );
+      const response = await fetch(`${LANYARD_API}${DISCORD_USER_ID}`, { cache: 'no-store' });
       if (!response.ok) return;
       const payload = await response.json();
+      /* the socket may have answered first; its data is newer */
+      if (live) return;
       if (payload.success && payload.data) paint(payload.data);
     } catch (error) {
       /* offline or blocked: the chip stays hidden rather than showing a broken state */
     }
   }
 
-  loadPresence();
-  setInterval(() => {
-    if (!document.hidden) loadPresence();
-  }, 60000);
+  /* if the socket stays down, fall back to the REST endpoint so the chip
+     still updates, just on a slower clock */
+  function startPolling() {
+    if (pollTimer) return;
+    live = false;
+    fetchPresence();
+    pollTimer = setInterval(() => {
+      if (!document.hidden) fetchPresence();
+    }, 60000);
+  }
+
+  function stopPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+  }
+
+  function stopBeat() {
+    if (beat) clearInterval(beat);
+    beat = null;
+  }
+
+  function clearHello() {
+    if (hello) clearTimeout(hello);
+    hello = null;
+  }
+
+  function dropSocket() {
+    stopBeat();
+    clearHello();
+    if (socket) {
+      socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+      try { socket.close(); } catch (error) { /* already closed */ }
+    }
+    socket = null;
+  }
+
+  function scheduleReconnect() {
+    if (retryTimer || !DISCORD_USER_ID) return;
+    const wait = Math.min(30000, 1000 * 2 ** Math.min(failures, 5));
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      connect();
+    }, wait);
+  }
+
+  function handleMessage(event) {
+    let message;
+    try {
+      message = JSON.parse(event.data);
+    } catch (error) {
+      return;
+    }
+
+    /* op 1 is the hello; it carries the interval the server expects */
+    if (message.op === 1) {
+      failures = 0;
+      clearHello();
+      stopPolling();
+      stopBeat();
+      const interval = (message.d && message.d.heartbeat_interval) || 30000;
+      beat = setInterval(() => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({ op: 3 }));
+        }
+      }, interval);
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ op: 2, d: { subscribe_to_id: DISCORD_USER_ID } }));
+      }
+      return;
+    }
+
+    /* op 0 carries INIT_STATE and every later PRESENCE_UPDATE */
+    if (message.op === 0 && message.d) {
+      live = true;
+      const data = message.d;
+      /* subscriptions by a single id arrive as the presence itself, while
+         several ids arrive keyed by id, so accept both shapes */
+      const presence = data.discord_user || data.discord_status ? data : data[DISCORD_USER_ID];
+      if (presence) paint(presence);
+    }
+  }
+
+  function connect() {
+    if (!DISCORD_USER_ID) return;
+    if (!('WebSocket' in window)) {
+      startPolling();
+      return;
+    }
+
+    dropSocket();
+
+    try {
+      socket = new WebSocket(LANYARD_SOCKET);
+    } catch (error) {
+      failures += 1;
+      startPolling();
+      scheduleReconnect();
+      return;
+    }
+
+    socket.onmessage = handleMessage;
+
+    /* a socket that opens but never greets us is dead weight; start over */
+    hello = setTimeout(() => {
+      hello = null;
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        failures += 1;
+        try { socket.close(); } catch (error) { /* already gone */ }
+      }
+    }, 10000);
+
+    socket.onerror = () => {
+      failures += 1;
+      if (failures >= 3) startPolling();
+    };
+
+    socket.onclose = () => {
+      socket = null;
+      stopBeat();
+      clearHello();
+      failures += 1;
+      if (failures >= 3) startPolling();
+      scheduleReconnect();
+    };
+  }
+
+  if (DISCORD_USER_ID) {
+    /* first paint without waiting for the handshake, then live updates */
+    fetchPresence();
+    connect();
+  }
 })();

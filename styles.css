@@ -1319,6 +1319,31 @@ body::after {
 
 .presence__item { display: grid; gap: 2px; }
 
+/* Spotify keeps its cover in colour: the art is the one colour note in the card */
+.presence__item--track { gap: 6px; }
+
+.presence__track {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.presence__art {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 6px;
+  background: var(--surface);
+  object-fit: cover;
+}
+
+.presence__track-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
 .presence__kicker {
   margin: 0 0 1px;
   color: var(--muted);
