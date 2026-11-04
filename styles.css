@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------
    Xerous: monochrome bio and showcase.
    Wide margins, big type, tone fields instead of rules.
-   CSS-only 3D wireframe globe, theme toggle, showcase tabs.
+   CSS-only 3D wireframe globe, theme toggle, a showcase of stacked pages.
    --------------------------------------------------------------- */
 
 :root {
@@ -130,7 +130,8 @@ html {
 
 body {
   margin: 0;
-  overflow-x: hidden;
+  /* clip rather than hidden: hidden makes body a scroll container and kills sticky */
+  overflow-x: clip;
   background: var(--ground);
   color: var(--ink-2);
   font-family: var(--sans);
@@ -554,6 +555,101 @@ body.has-pointer .hero-grid { opacity: 1; }
   to   { transform: translateY(calc(6 * var(--u))); }
 }
 
+/* ---------- tools floating around the globe ---------- */
+
+.skills {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.skill {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+
+.skill--python     { left: 50%; top: 11%; --brand: #3776ab; --dur: 7.5s; --delay: -0.4s; }
+.skill--javascript { left: 86%; top: 37%; --brand: #f7df1e; --dur: 8.4s; --delay: -2.1s; }
+.skill--typescript { left: 74%; top: 81%; --brand: #3178c6; --dur: 7.9s; --delay: -1.2s; }
+.skill--rust       { left: 26%; top: 81%; --brand: #ce422b; --dur: 9.1s; --delay: -3.3s; }
+.skill--react      { left: 14%; top: 37%; --brand: #61dafb; --dur: 8.7s; --delay: -1.8s; }
+
+.skill__btn {
+  display: grid;
+  place-items: center;
+  width: calc(46 * var(--u));
+  height: calc(46 * var(--u));
+  padding: calc(9 * var(--u));
+  border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--raise) 82%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 calc(12 * var(--u)) calc(26 * var(--u)) calc(-22 * var(--u)) rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  pointer-events: auto;
+  animation: drift var(--dur, 8s) ease-in-out infinite alternate;
+  animation-delay: var(--delay, 0s);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease,
+              background-color 0.25s ease;
+}
+
+.skill__btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* pausing on hover keeps the target still long enough to click */
+.skill__btn:hover,
+.skill__btn:focus-visible {
+  animation-play-state: paused;
+  border-color: color-mix(in srgb, var(--brand) 55%, transparent);
+}
+
+.skill__btn:hover img { transform: scale(1.12); }
+
+.skill.is-on .skill__btn {
+  background: var(--raise);
+  border-color: transparent;
+  box-shadow: 0 0 0 calc(2 * var(--u)) var(--brand),
+              0 calc(16 * var(--u)) calc(30 * var(--u)) calc(-22 * var(--u)) rgba(0, 0, 0, 0.6);
+  animation-play-state: paused;
+}
+
+.skill.is-on .skill__btn img { transform: scale(1.08); }
+
+@keyframes drift {
+  from { transform: translate3d(0, calc(-6 * var(--u)), 0); }
+  to   { transform: translate3d(calc(4 * var(--u)), calc(6 * var(--u)), 0); }
+}
+
+.skill-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  max-width: 34ch;
+  min-height: 2.8em;
+  margin: clamp(6px, 1.2vw, 12px) auto 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.skill-note__dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--note, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--note, transparent) 22%, transparent);
+  transition: background-color 0.25s ease, box-shadow 0.25s ease;
+}
+
 
 @keyframes rise {
   from { opacity: 0; transform: translateY(16px); }
@@ -639,63 +735,58 @@ body.has-pointer .hero-grid { opacity: 1; }
   letter-spacing: -0.035em;
 }
 
-.tabbar {
-  display: inline-flex;
-  gap: 5px;
-  margin-bottom: clamp(18px, 2.6vw, 26px);
-  padding: 5px;
-  border-radius: var(--full);
-  background: var(--surface);
+/* the project pages land on top of one another like sheets off a printer */
+
+.stack {
+  --pin: clamp(96px, 12vh, 124px);
+  --lip: 10px;
+  display: flow-root;
 }
 
-.tab {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0.6rem 1.5rem;
-  border-radius: var(--full);
-  font-size: 0.9375rem;
-  font-weight: 500;
-  color: var(--muted);
-  cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease;
+/* a margin rather than a gap, so the last page can still travel down the stack */
+.panel + .panel { margin-top: clamp(18px, 2.6vw, 30px); }
+
+/* pages pin while the stack is active; on phones they are capped to a screen */
+.stack.is-stacked .panel {
+  position: sticky;
+  top: calc(var(--pin) + var(--i) * var(--lip));
+  z-index: calc(1 + var(--i));
+  transform-origin: 50% 0%;
+  translate: 0 var(--sheet-shift);
+  scale: var(--sheet-scale);
+  filter: brightness(var(--sheet-dim));
+  will-change: transform, translate, scale;
 }
 
-.tab:hover { color: var(--ink); }
-
-#tab-synapse:checked ~ .tabbar label[for="tab-synapse"],
-#tab-synfull:checked ~ .tabbar label[for="tab-synfull"] {
-  background: var(--ink);
-  color: var(--ground);
-}
-
-#tab-synapse:focus-visible ~ .tabbar label[for="tab-synapse"],
-#tab-synfull:focus-visible ~ .tabbar label[for="tab-synfull"] {
-  outline: 2px solid var(--focus);
-  outline-offset: 3px;
+/* the drop below the last page is what lets it settle before the stack leaves */
+.stack.is-stacked .panel:last-child {
+  margin-bottom: clamp(48px, 16vh, 140px);
 }
 
 .panel {
   --tx: 0;
   --ty: 0;
-  display: none;
+  --i: 0;
+  --sheet-shift: 0px;
+  --sheet-scale: 1;
+  --sheet-dim: 1;
   padding: clamp(20px, 3.4vw, 44px);
+  border: 1px solid color-mix(in srgb, var(--ink) 7%, transparent);
   border-radius: var(--r-3);
   background: var(--surface);
+  box-shadow: 0 34px 62px -56px rgba(0, 0, 0, 0.7),
+              inset 0 1px 0 color-mix(in srgb, var(--raise) 85%, transparent);
   transform: perspective(1600px) rotateX(calc(var(--ty) * 1deg)) rotateY(calc(var(--tx) * 1deg));
   transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
   will-change: transform;
 }
 
-#tab-synapse:checked ~ .panels .panel--synapse,
-#tab-synfull:checked ~ .panels .panel--synfull {
-  display: block;
-  animation: panel-in 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
-}
+.panel:nth-child(2) { --i: 1; }
 
-@keyframes panel-in {
-  from { opacity: 0; translate: 0 14px; }
-  to   { opacity: 1; translate: 0 0; }
+/* a capped sheet is scrollable, so it has to be reachable by keyboard too */
+.panel:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
 }
 
 .panel__head {
@@ -1496,8 +1587,7 @@ html.js [data-reveal].is-in {
   transform: none;
 }
 
-html.js .tabbar[data-reveal] { transition-delay: 0.06s; }
-html.js .panels[data-reveal] { transition-delay: 0.12s; }
+html.js .stack[data-reveal] { transition-delay: 0.1s; }
 
 /* ---------- entrance ---------- */
 
@@ -1536,10 +1626,30 @@ html.js .panels[data-reveal] { transition-delay: 0.12s; }
 
   /* keep the floating bar from outgrowing a narrow window */
   .presence--dock .status__activity { display: none; }
+
+  /* phones keep the stack, but each page becomes one screen tall and scrolls
+     inside itself; a pinned sheet taller than the screen would trap its end */
+  .stack {
+    --sheet-gap: 16px;
+  }
+
+  .stack.is-stacked .panel {
+    max-height: calc(100vh - var(--pin) - var(--lip) - var(--sheet-gap));
+    max-height: calc(100dvh - var(--pin) - var(--lip) - var(--sheet-gap));
+    overflow-y: auto;
+  }
 }
 
 @media (max-width: 720px) {
   .status__activity { display: none; }
+
+  /* the bar moves to the bottom here, so the sheets can sit near the top edge
+     and stop just above the floating bar rather than behind it */
+  .stack {
+    --pin: calc(12px + env(safe-area-inset-top, 0px));
+    --lip: 8px;
+    --sheet-gap: 84px;
+  }
 
   .dock {
     top: auto;
@@ -1618,8 +1728,6 @@ html.js .panels[data-reveal] { transition-delay: 0.12s; }
   .panel__mark { font-size: 1.375rem; }
 
   .panel__head p { font-size: 1rem; }
-
-  .tab { padding-inline: 1.15rem; }
 
   .btn { width: 100%; }
 

@@ -131,7 +131,41 @@
             </div>
           </div>
           <img class="orb" src="assets/xerous_avatar.png" alt="Xerous" width="160" height="160">
+
+          <!-- tools floating around the globe; picking one explains where I use it -->
+          <div class="skills" role="group" aria-label="Technologies I work with">
+            <div class="skill skill--python">
+              <button class="skill__btn" type="button" data-skill="python" aria-pressed="false" aria-label="Python">
+                <img src="assets/logos/python.svg" alt="" width="28" height="28" loading="lazy" decoding="async">
+              </button>
+            </div>
+            <div class="skill skill--javascript">
+              <button class="skill__btn" type="button" data-skill="javascript" aria-pressed="false" aria-label="JavaScript">
+                <img src="assets/logos/javascript.svg" alt="" width="28" height="28" loading="lazy" decoding="async">
+              </button>
+            </div>
+            <div class="skill skill--typescript">
+              <button class="skill__btn" type="button" data-skill="typescript" aria-pressed="false" aria-label="TypeScript">
+                <img src="assets/logos/typescript.svg" alt="" width="28" height="28" loading="lazy" decoding="async">
+              </button>
+            </div>
+            <div class="skill skill--rust">
+              <button class="skill__btn" type="button" data-skill="rust" aria-pressed="false" aria-label="Rust">
+                <img src="assets/logos/rust.svg" alt="" width="28" height="28" loading="lazy" decoding="async">
+              </button>
+            </div>
+            <div class="skill skill--react">
+              <button class="skill__btn" type="button" data-skill="react" aria-pressed="false" aria-label="React">
+                <img src="assets/logos/react.svg" alt="" width="28" height="28" loading="lazy" decoding="async">
+              </button>
+            </div>
+          </div>
         </div>
+
+        <p class="skill-note" id="skill-note" aria-live="polite">
+          <span class="skill-note__dot" aria-hidden="true"></span>
+          <span class="skill-note__text">Pick a tool to see what I build with it</span>
+        </p>
       </div>
     </div>
 
@@ -157,17 +191,9 @@
     <div class="showcase__inner">
       <h2 data-reveal>What I build</h2>
 
-      <input class="sr-only" type="radio" name="showcase" id="tab-synapse" checked>
-      <input class="sr-only" type="radio" name="showcase" id="tab-synfull">
+      <div class="stack" data-reveal>
 
-      <div class="tabbar" role="presentation" data-reveal>
-        <label class="tab" for="tab-synapse">Synapse</label>
-        <label class="tab" for="tab-synfull">synfull</label>
-      </div>
-
-      <div class="panels" data-reveal>
-
-        <article class="panel panel--synapse" aria-labelledby="synapse-title">
+        <article class="panel" aria-labelledby="synapse-title">
           <div class="panel__head">
             <img class="panel__logo" src="assets/synapse_bot_logo.png" alt="Synapse bot avatar" width="88" height="88">
             <div>
@@ -222,7 +248,7 @@
           </div>
         </article>
 
-        <article class="panel panel--synfull" aria-labelledby="synfull-title">
+        <article class="panel" aria-labelledby="synfull-title">
           <div class="panel__head">
             <span class="panel__mark" aria-hidden="true">sf</span>
             <div>

@@ -123,6 +123,95 @@ const DISCORD_USER_ID = (document.getElementById('discord-status')?.dataset.user
     });
   }
 
+  /* ---------- showcase pages land on top of one another ---------- */
+
+  const showcaseStack = document.querySelector('.stack');
+  if (showcaseStack) {
+    const pages = [...showcaseStack.querySelectorAll('.panel')];
+    const narrowScreen = window.matchMedia('(max-width: 860px)');
+    const clamp01 = (value) => Math.min(1, Math.max(0, value));
+    let geometry = [];
+    let stacked = false;
+    let frame = 0;
+
+    const clearSheet = (page) => {
+      page.style.removeProperty('--sheet-shift');
+      page.style.removeProperty('--sheet-scale');
+      page.style.removeProperty('--sheet-dim');
+    };
+
+    /* the pin offset only exists while stacked, so switch the layout on to read
+       it; on phones the pages are capped to a screen, elsewhere they must fit */
+    const measure = () => {
+      showcaseStack.classList.add('is-stacked');
+      geometry = pages.map((page) => ({
+        page,
+        height: page.offsetHeight,
+        pin: parseFloat(getComputedStyle(page).top) || 0
+      }));
+
+      const fitsScreen = geometry.every(({ height, pin }) => height + pin + 32 <= window.innerHeight);
+
+      /* phones always stack: their pages are capped to one screen and scroll
+         inside the sheet, so a pinned page can never trap its own ending */
+      stacked = !reduce && pages.length > 1 && (narrowScreen.matches || fitsScreen);
+
+      showcaseStack.classList.toggle('is-stacked', stacked);
+
+      /* a capped sheet is its own scroll box, so give it a keyboard way in */
+      pages.forEach((page) => {
+        if (stacked && page.scrollHeight > page.clientHeight + 1) page.setAttribute('tabindex', '0');
+        else page.removeAttribute('tabindex');
+      });
+
+      if (!stacked) pages.forEach(clearSheet);
+    };
+
+    const paint = () => {
+      frame = 0;
+      if (!stacked) return;
+
+      const travel = Math.max(120, window.innerHeight * 0.3);
+
+      geometry.forEach(({ page, height, pin }, index) => {
+        const rect = page.getBoundingClientRect();
+
+        /* how close this page is to its pin: it settles as it arrives */
+        const enter = clamp01(1 - (rect.top - pin) / travel);
+
+        /* how much of it the next page is actually lying on */
+        const next = geometry[index + 1];
+        let buried = 0;
+        if (next) {
+          const nextRect = next.page.getBoundingClientRect();
+          const overlap = Math.min(rect.bottom, nextRect.bottom) - Math.max(rect.top, nextRect.top);
+          buried = clamp01(overlap / Math.max(1, Math.min(rect.height || height, nextRect.height || height)));
+        }
+
+        /* the page under the new one settles back and slides up beneath it */
+        const lift = (1 - enter) * 26 - buried * 24;
+        page.style.setProperty('--sheet-shift', `${lift.toFixed(1)}px`);
+        page.style.setProperty('--sheet-scale', (0.982 + enter * 0.018 - buried * 0.03).toFixed(4));
+        page.style.setProperty('--sheet-dim', (1 - buried * 0.28).toFixed(3));
+      });
+    };
+
+    const queue = () => {
+      if (!frame) frame = requestAnimationFrame(paint);
+    };
+
+    const refresh = () => {
+      measure();
+      paint();
+    };
+
+    window.addEventListener('scroll', queue, { passive: true });
+    window.addEventListener('resize', refresh);
+    window.addEventListener('load', refresh);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(refresh);
+    refresh();
+  }
+
   /* ---------- buttons give slightly under the cursor ---------- */
 
   if (finePointer && !reduce) {
@@ -141,6 +230,54 @@ const DISCORD_USER_ID = (document.getElementById('discord-status')?.dataset.user
       });
     });
   }
+
+  /* ---------- floating skill logos ---------- */
+
+  const SKILLS = {
+    python: { name: 'Python', note: 'Discord bots and APIs' },
+    javascript: { name: 'JavaScript', note: 'Page behaviour and tooling' },
+    typescript: { name: 'TypeScript', note: 'Typed web apps' },
+    rust: { name: 'Rust', note: 'Fast, safe utilities' },
+    react: { name: 'React', note: 'Interactive interfaces' }
+  };
+
+  const skillButtons = [...document.querySelectorAll('.skill__btn')];
+  const skillNote = document.getElementById('skill-note');
+  const skillText = skillNote && skillNote.querySelector('.skill-note__text');
+  const skillHint = skillText ? skillText.textContent : '';
+
+  function clearSkill() {
+    skillButtons.forEach((btn) => {
+      btn.setAttribute('aria-pressed', 'false');
+      const slot = btn.closest('.skill');
+      if (slot) slot.classList.remove('is-on');
+    });
+    if (skillNote && skillText) {
+      skillNote.style.removeProperty('--note');
+      skillText.textContent = skillHint;
+    }
+  }
+
+  skillButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const wasOn = btn.getAttribute('aria-pressed') === 'true';
+      clearSkill();
+      if (wasOn) return;
+
+      const skill = SKILLS[btn.dataset.skill];
+      if (!skill) return;
+
+      btn.setAttribute('aria-pressed', 'true');
+      const slot = btn.closest('.skill');
+      if (slot) slot.classList.add('is-on');
+
+      if (skillNote && skillText) {
+        const brand = getComputedStyle(btn).getPropertyValue('--brand').trim();
+        if (brand) skillNote.style.setProperty('--note', brand);
+        skillText.textContent = `${skill.name}: ${skill.note}`;
+      }
+    });
+  });
 
   /* ---------- sections arrive as you reach them ---------- */
 
